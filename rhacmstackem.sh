@@ -11,6 +11,7 @@ git clone https://github.com/KevinFCormier/lifeguard.git
 git clone "https://${GIT_USER}:${GIT_TOKEN}@github.com/stolostron/pipeline.git"
 git clone https://github.com/stolostron/deploy.git
 git clone https://github.com/stolostron/cluster-keeper.git
+git clone https://github.com/nitin-dhevar/cluster-cert.git
 pushd cluster-keeper
 cat > user.env << EOF
 CLUSTERPOOL_CLUSTER=https://$(getent hosts kubernetes.default.svc | cut -f 1 -d ' '):443
@@ -20,6 +21,7 @@ EOF
 export PATH=${PATH}:$(pwd)
 popd
 
+HOSTED_ZONE_NAME="dev02.red-chesterfield.com"
 export LIFEGUARD_PATH=/lifeguard
 export RHACM_PIPELINE_PATH=/pipeline
 export RHACM_DEPLOY_PATH=/deploy
@@ -135,6 +137,9 @@ fi
 # Back to ClusterPool host
 unset KUBECONFIG
 
+CLUSTERDEPLOYMENT=$(oc get -n ${CLUSTERPOOL_TARGET_NAMESPACE} clusterclaim.hive ${CLUSTERCLAIM_NAME} -o jsonpath='{.spec.namespace}')
+echo "ClusterDeployment name: ${CLUSTERDEPLOYMENT}"
+
 # Enable service accounts for use with cluster-keeper
 echo "##### Enabling service accounts for cluster-keeper #####"
 oc config set-context ck
@@ -148,6 +153,11 @@ else
   ck disable-schedule $CLUSTERCLAIM_NAME
 fi
 
+# Add certificate
+./cluster-cert/apply-apps-cert.sh "${CLUSTERDEPLOYMENT}" "${HOSTED_ZONE_NAME}" "${LIFEGUARD_PATH}/clusterclaims/${CLUSTERCLAIM_NAME}/kubeconfig" "${CLUSTERPOOL_TARGET_NAMESPACE}" "${CLUSTERCLAIM_LIFETIME}"
+
+# Point to claimed cluster
+export KUBECONFIG=${LIFEGUARD_PATH}/clusterclaims/${CLUSTERCLAIM_NAME}/kubeconfig
 
 # Send cluster information to Slack
 if [[ -n "${SLACK_URL}" ]] || ( [[ -n "${SLACK_TOKEN}" ]] && [[ -n "${SLACK_CHANNEL_ID}" ]] ); then
